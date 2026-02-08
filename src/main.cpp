@@ -45,6 +45,9 @@ void drawTopBar() {
     }
 }
 
+void setup() {
+    Serial.begin(115200);
+
     // Display Init
     tft.init();
     tft.setRotation(1); 
@@ -129,6 +132,7 @@ void loop() {
 void switchPage(int index) {
     if(index < 0 || index >= PAGE_COUNT) return;
     currentPage = index;
-    // pages[currentPage]->draw();
+    // pages[currentPage]->draw(); // Optimisation: Let loop handle draw or call draw explicitly
     drawTopBar();
+    pages[currentPage]->draw(); // Explicitly draw the new page
 }
