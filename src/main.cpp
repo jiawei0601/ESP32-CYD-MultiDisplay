@@ -6,14 +6,20 @@
 #include "Page.h"
 
 // Page Includes
-// #include "pages/WeatherPage.h"
-// #include "pages/StockPage.h"
-// #include "pages/MarketPage.h"
-// #include "pages/AlbumPage.h"
+#include "pages/WeatherPage.h"
+#include "pages/StockPage.h"
+#include "pages/MarketPage.h"
+#include "pages/AlbumPage.h"
 
 // Hardware
 TFT_eSPI tft = TFT_eSPI();
-XPT2046_Touchscreen touch(33, 36); // CS, IRQ for CYD
+#define XPT2046_IRQ 36
+#define XPT2046_MOSI 32
+#define XPT2046_MISO 39
+#define XPT2046_CLK 25
+#define XPT2046_CS 33
+SPIClass touchSPI = SPIClass(VSPI);
+XPT2046_Touchscreen touch(XPT2046_CS, XPT2046_IRQ);
 
 // Pages
 const int PAGE_COUNT = 4;
@@ -37,51 +43,60 @@ void drawTopBar() {
     }
 }
 
-void setup() {
-    Serial.begin(115200);
-
     // Display Init
     tft.init();
     tft.setRotation(1); 
-    tft.invertDisplay(true); // CYD sometimes needs this
+    tft.invertDisplay(true); 
     tft.fillScreen(TFT_BLACK);
 
-    // Touch
-    // touch.begin(); 
+    // Touch Init
+    touchSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
+    touch.begin(touchSPI);
+    touch.setRotation(1);
 
     // WiFi
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     tft.drawString("Connecting WiFi...", 160, 120, 4);
-    while (WiFi.status() != WL_CONNECTED) {
+    // Timeout for WiFi to avoid sticking if no connection
+    int limit = 0;
+    while (WiFi.status() != WL_CONNECTED && limit < 20) {
         delay(500);
         Serial.print(".");
+        limit++;
     }
-    Serial.println("\nWiFi Connected");
+    Serial.println("\nWiFi Done");
 
     // Initialize Pages
-    // pages[0] = new WeatherPage();
-    // pages[1] = new AlbumPage();
-    // pages[2] = new StockPage();
-    // pages[3] = new MarketPage(); // Include NASDAQ & BTC here
+    pages[2] = new WeatherPage(); // Swap because I want Weather first? No logic order.
+    pages[3] = new AlbumPage();
+    pages[1] = new StockPage();
+    pages[0] = new MarketPage(); // 1. Market, 2. Stock, 3. Weather, 4. Album
 
-    /* for(int i=0; i<PAGE_COUNT; i++) {
+    for(int i=0; i<PAGE_COUNT; i++) {
         pages[i]->setup(&tft);
-    } */
-
+    }
+    
+    // Default to Market
     switchPage(0);
 }
 
 void loop() {
-    // Touch Check for Top Bar
-    /*
     if (touch.touched()) {
         TS_Point p = touch.getPoint();
-        // Calibrate & Map p.x, p.y to screen
-        // If y < 30, check x range for page switch
+        // CYD Rotation 1 Calibration
+        int tx = map(p.x, 350, 3750, 320, 0); 
+        int ty = map(p.y, 250, 3850, 240, 0); 
+        tx = constrain(tx, 0, 319); 
+        ty = constrain(ty, 0, 239);
+        
+        if (ty < 40) { // Top Bar Touch
+             int newPage = tx / (320 / PAGE_COUNT);
+             if (newPage != currentPage && newPage < PAGE_COUNT) switchPage(newPage);
+             delay(200); 
+        }
     }
-    */
     
-    // pages[currentPage]->loop();
+    pages[currentPage]->loop();
     delay(10);
 }
 
