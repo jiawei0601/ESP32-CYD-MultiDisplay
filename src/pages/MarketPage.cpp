@@ -68,14 +68,12 @@ void MarketPage::updateMarket() {
         bool allOk = true;
         for (int i = 0; i < 4; i++) {
             String sym = _assets[i].symbol;
-            // 轉向免 401 驗證的穩定來源 (加密 JSON 格式)
-            // 這裡使用金融數據彙整網，並加入 Cache 避免過度頻繁
             String url = "https://brapi.dev/api/quote/" + sym; 
-            if (sym == "^IXIC") url = "https://brapi.dev/api/quote/%5EIXIC"; // NASDAQ 編碼
+            if (sym == "^IXIC") url = "https://brapi.dev/api/quote/%5EIXIC"; 
 
             http.begin(url);
             http.setUserAgent("ESP32-Ticker");
-            http.setTimeout(10000);
+            http.setTimeout(8000);
             
             int httpCode = http.GET();
             if (httpCode == 200) {
@@ -85,28 +83,44 @@ void MarketPage::updateMarket() {
                 
                 JsonObject data = doc["results"][0];
                 _assets[i].price = data["regularMarketPrice"];
-                _assets[i].changePercent = data["regularMarketChangePercent"];
-                _assets[i].change = data["regularMarketChange"];
+                
+                // 具備容錯性的漲跌幅抓取
+                if (data.containsKey("regularMarketChange")) {
+                    _assets[i].change = data["regularMarketChange"];
+                    _assets[i].changePercent = data["regularMarketChangePercent"];
+                } else if (data.containsKey("change")) {
+                    _assets[i].change = data["change"];
+                    _assets[i].changePercent = data["changePercent"];
+                }
+                
                 _assets[i].isValid = true;
                 _lastError = "OK";
             } else {
-                // 如果替代方案也不行，嘗試使用 v8 chart 作為最後備案 (有時 chart 比 quote 鬆)
-                String backupUrl = "https://query1.finance.yahoo.com/v8/finance/chart/" + sym;
+                // Yahoo 備援路徑補強
+                String backupUrl = "https://query1.finance.yahoo.com/v8/finance/chart/" + sym + "?interval=1d&range=1d";
                 http.begin(backupUrl);
                 int bCode = http.GET();
                 if (bCode == 200) {
                     JsonDocument doc;
                     deserializeJson(doc, http.getString());
-                    JsonObject meta = doc["chart"]["result"][0]["meta"];
-                    _assets[i].price = meta["regularMarketPrice"];
-                    _assets[i].isValid = true;
+                    if (doc["chart"]["result"].size() > 0) {
+                        JsonObject meta = doc["chart"]["result"][0]["meta"];
+                        _assets[i].price = meta["regularMarketPrice"];
+                        double prevClose = meta["previousClose"];
+                        if (prevClose == 0) prevClose = meta["chartPreviousClose"];
+                        
+                        _assets[i].change = _assets[i].price - prevClose;
+                        _assets[i].changePercent = (prevClose != 0) ? (_assets[i].change / prevClose) * 100.0 : 0;
+                        _assets[i].isValid = true;
+                        _lastError = "Backup OK";
+                    }
                 } else {
                     allOk = false;
                     _lastError = "Err: " + String(httpCode);
                 }
             }
             http.end();
-            delay(500); 
+            delay(300); 
         }
         if (allOk) _lastUpdate = millis();
     } else {
