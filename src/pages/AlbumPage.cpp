@@ -14,12 +14,13 @@ void AlbumPage::setup(TFT_eSPI* tft) {
     _tft = tft;
     g_tft = tft;
 
-    // SD Init (VSPI)
+    /* 暫時停用 SD 卡以解決 SPI 觸控衝突
     SPI.begin(18, 19, 23, 5); // CLK, MISO, MOSI, CS
     if (!SD.begin(5)) {
         Serial.println("SD Mount Failed");
         return;
     }
+    */
     
     TJpgDec.setJpgScale(1);
     TJpgDec.setSwapBytes(true);

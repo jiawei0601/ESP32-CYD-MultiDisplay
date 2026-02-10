@@ -21,7 +21,8 @@ TFT_eSPI tft = TFT_eSPI();
 #define XPT2046_CLK 25
 #define XPT2046_CS 33
 SPIClass touchSPI = SPIClass(VSPI);
-XPT2046_Touchscreen touch(XPT2046_CS, XPT2046_IRQ);
+// XPT2046_Touchscreen touch(XPT2046_CS, XPT2046_IRQ);
+XPT2046_Touchscreen touch(XPT2046_CS); // 移除 IRQ 引腳以提高穩定性
 
 // Pages
 const int PAGE_COUNT = 5;
@@ -49,15 +50,18 @@ void setup() {
     Serial.begin(115200);
 
     // Display Init
+    pinMode(21, OUTPUT); 
+    digitalWrite(21, HIGH); // 打開背光
     tft.init();
-    tft.setRotation(1); 
-    tft.invertDisplay(true); 
+    tft.setRotation(3); 
+    tft.invertDisplay(true); // 強制反相修正，使背景變黑
     tft.fillScreen(TFT_BLACK);
 
     // Touch Init
     touchSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
     touch.begin(touchSPI);
-    touch.setRotation(1);
+    touch.setRotation(3); // 觸控同步旋轉 3
+    Serial.println("Touch Initialized");
 
     // WiFi from Preferences
     Preferences prefs;
@@ -66,28 +70,23 @@ void setup() {
     String savedPass = prefs.getString("pass", "");
     prefs.end();
 
-    if (savedSSID.length() > 0) {
-        WiFi.begin(savedSSID.c_str(), savedPass.c_str());
-        tft.drawString("Connecting " + savedSSID, 160, 120, 2);
+    if (savedSSID.length() == 0) {
+        savedSSID = WIFI_SSID;
+        savedPass = WIFI_PASS;
+    }
+
+    // WiFi Init (Wait for connection to avoid 0 values)
+    if (savedSSID.length() > 0 && String(savedSSID) != "Your_SSID") {
+        tft.fillScreen(TFT_BLACK);
+        tft.setTextColor(TFT_WHITE);
+        tft.drawCentreString("WiFi Connecting...", 160, 100, 2);
         
-        // Timeout for WiFi
+        WiFi.begin(savedSSID.c_str(), savedPass.c_str());
         int limit = 0;
         while (WiFi.status() != WL_CONNECTED && limit < 20) {
             delay(500);
-            Serial.print(".");
             limit++;
         }
-        if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("\nWiFi Connected");
-            tft.drawString("Connected!", 160, 140, 2);
-            delay(1000);
-        } else {
-             tft.drawString("WiFi Failed", 160, 140, 2);
-             delay(1000);
-        }
-    } else {
-        tft.drawString("No WiFi Configured", 160, 120, 2);
-        delay(1000);
     }
 
     // Initialize Pages
@@ -101,37 +100,43 @@ void setup() {
         pages[i]->setup(&tft);
     }
     
-    // Default to Settings if no WiFi, else Market
-    if (WiFi.status() != WL_CONNECTED) {
-        switchPage(4);
-    } else {
-        switchPage(0);
-    }
+    // Always start at Market Page
+    switchPage(0); 
 }
 
 void loop() {
     if (touch.touched()) {
         TS_Point p = touch.getPoint();
-        // CYD Rotation 1 Calibration
-        int tx = map(p.x, 350, 3750, 320, 0); 
-        int ty = map(p.y, 250, 3850, 240, 0); 
+        
+        // USB on Left (Rotation 3) - 根據診斷數據精確修正
+        int tx = map(p.x, 3550, 350, 0, 320); 
+        int ty = map(p.y, 3750, 350, 0, 240); 
         tx = constrain(tx, 0, 319); 
         ty = constrain(ty, 0, 239);
-        
-        if (ty < 40) { // Top Bar Touch
+
+        // 視覺回饋：註解掉以防畫面堆積紅點
+        // tft.fillCircle(tx, ty, 3, TFT_RED);
+
+        if (ty < 60) { // 稍微放寬頂部判定範圍
              int newPage = tx / (320 / PAGE_COUNT);
-             if (newPage != currentPage && newPage < PAGE_COUNT) switchPage(newPage);
-             delay(200); 
+             if (newPage != currentPage && newPage < PAGE_COUNT) {
+                 switchPage(newPage);
+                 delay(400); 
+             }
+        } else {
+             // 傳遞觸控給特定頁面內容 (如 SettingsPage)
+             if (currentPage == 4) pages[4]->loop();
         }
     }
     
-    pages[currentPage]->loop();
+    if (pages[currentPage]) pages[currentPage]->loop();
     delay(10);
 }
 
 void switchPage(int index) {
     if(index < 0 || index >= PAGE_COUNT) return;
     currentPage = index;
+    tft.fillScreen(TFT_BLACK); // Clear once on switch
     // pages[currentPage]->draw(); // Optimisation: Let loop handle draw or call draw explicitly
     drawTopBar();
     pages[currentPage]->draw(); // Explicitly draw the new page

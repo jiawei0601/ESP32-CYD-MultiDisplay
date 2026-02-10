@@ -5,6 +5,15 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
+struct MarketAsset {
+    String symbol;
+    String name;
+    double price;
+    double change;
+    double changePercent;
+    bool isValid = false;
+};
+
 class MarketPage : public Page {
 public:
     void setup(TFT_eSPI* tft) override;
@@ -15,16 +24,12 @@ public:
 private:
     TFT_eSPI* _tft;
     unsigned long _lastUpdate = 0;
-    const unsigned long _interval = 10000; 
+    const unsigned long _interval = 10000; // 10s 更新一次
 
-    // NASDAQ
-    double _nasdaqPrice = 0;
-    double _nasdaqChange = 0;
-    
-    // BTC
-    double _btcPrice = 0;
+    MarketAsset _assets[4]; 
     
     void updateMarket();
+    void drawCell(int idx, int x, int y, int w, int h);
 };
 
 #endif

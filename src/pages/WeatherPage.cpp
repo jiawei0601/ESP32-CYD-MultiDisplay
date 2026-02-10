@@ -1,4 +1,5 @@
 #include "WeatherPage.h"
+#include <Preferences.h>
 
 void WeatherPage::setup(TFT_eSPI* tft) {
     _tft = tft;
@@ -6,6 +7,22 @@ void WeatherPage::setup(TFT_eSPI* tft) {
 }
 
 void WeatherPage::loop() {
+    // 檢查是否有新的城市設定 (每秒檢查一次即可)
+    static unsigned long lastCheck = 0;
+    if (millis() - lastCheck > 2000) {
+        lastCheck = millis();
+        Preferences prefs;
+        prefs.begin("weather_v3", true);
+        String currentSafeCity = prefs.getString("city", "Taipei");
+        prefs.end();
+        
+        // 如果發現設定改了，立即觸發更新
+        if (currentSafeCity != _lastSavedCity) {
+            updateWeather();
+            draw();
+        }
+    }
+
     if (millis() - _lastUpdate > _interval) {
         updateWeather(); 
         draw(); 
@@ -13,7 +30,6 @@ void WeatherPage::loop() {
 }
 
 void WeatherPage::draw() {
-    _tft->fillScreen(TFT_BLACK);
     _tft->setTextColor(TFT_WHITE, TFT_BLACK);
     
     // Title
@@ -33,25 +49,49 @@ void WeatherPage::draw() {
     _tft->drawString(humStr, 160, 190, 4);
 }
 
+
 void WeatherPage::updateWeather() {
+    Preferences prefs;
+    prefs.begin("weather_v3", true); 
+    float lat = prefs.getFloat("lat", 25.03); 
+    float lon = prefs.getFloat("lon", 121.56);
+    _city = prefs.getString("city", "Taipei");
+    _lastSavedCity = _city; // 更新紀錄標記
+    prefs.end();
+
     if (WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
-        String url = "http://api.openweathermap.org/data/2.5/weather?q=" + String(OWM_CITY) + "&appid=" + String(OWM_API_KEY) + "&units=metric";
+        // 改用 http 避免 SSL 證書導致的請求失敗
+        String url = "http://api.open-meteo.com/v1/forecast?latitude=" + String(lat) + "&longitude=" + String(lon) + "&current_weather=true";
         
         http.begin(url);
+        http.setTimeout(5000);
         int httpCode = http.GET();
         
-        if (httpCode > 0) {
+        if (httpCode == 200) {
             String payload = http.getString();
             JsonDocument doc;
             deserializeJson(doc, payload);
             
-            _temp = doc["main"]["temp"];
-            _humidity = doc["main"]["humidity"];
-            _weatherDesc = doc["weather"][0]["main"].as<String>();
-            _city = doc["name"].as<String>();
+            _temp = doc["current_weather"]["temperature"];
+            _humidity = doc["current_weather"]["windspeed"]; 
+            
+            int code = doc["current_weather"]["weathercode"];
+            
+            if (code == 0) _weatherDesc = "Clear Sky";
+            else if (code >= 1 && code <= 3) _weatherDesc = "Partly Cloudy";
+            else if (code >= 45 && code <= 48) _weatherDesc = "Foggy";
+            else if (code >= 51 && code <= 67) _weatherDesc = "Rainy";
+            else if (code >= 71 && code <= 77) _weatherDesc = "Snowy";
+            else if (code >= 80 && code <= 99) _weatherDesc = "Stormy";
+            else _weatherDesc = "Cloudy";
+
             _lastUpdate = millis();
+        } else {
+            _weatherDesc = "Connect Error";
         }
         http.end();
+    } else {
+        _weatherDesc = "No WiFi";
     }
 }

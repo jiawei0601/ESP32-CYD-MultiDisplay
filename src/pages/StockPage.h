@@ -21,6 +21,7 @@ private:
     double _price = 0.0;
     double _change = 0.0;
     
+    uint16_t _lastBg = 0xFFFF;
     void updateStock();
 };
 

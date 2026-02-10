@@ -2,8 +2,8 @@
 #define CONFIG_H
 
 // WiFi Config (Used as fallback or initial)
-static const char* WIFI_SSID = "Your_SSID";
-static const char* WIFI_PASS = "Your_PASSWORD";
+static const char* WIFI_SSID = "TD_2.4G";
+static const char* WIFI_PASS = "43715131";
 
 // API Keys
 static const char* OWM_API_KEY = "Your_OWM_Key"; // OpenWeatherMap

@@ -3,13 +3,17 @@
 
 #include "../Page.h"
 #include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 #include <Preferences.h>
 #include <vector>
 
 enum SettingsState {
     STATE_SCAN,
     STATE_INPUT_PASS,
-    STATE_CONNECTING
+    STATE_CONNECTING,
+    STATE_INPUT_CITY,     // 城市名稱輸入
+    STATE_SELECT_CITY     // 城市選單 (Taipei, Taichung, Kaohsiung, etc)
 };
 
 struct Key {
@@ -44,6 +48,9 @@ private:
     void handleTouch();
     void connectWiFi();
     void scanNetworks();
+    void drawCityList();
+    void saveCity(String name, float lat, float lon);
+    void autoLocate();
 
     // Keyboard Layout
     std::vector<Key> _keys;

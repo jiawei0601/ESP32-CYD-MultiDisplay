@@ -30,6 +30,8 @@ void SettingsPage::draw() {
         _tft->drawCentreString("Connecting to:", 160, 80, 4);
         _tft->drawCentreString(_ssids[_selectedNetworkIndex], 160, 120, 4);
         _tft->drawCentreString("Please Wait...", 160, 160, 4);
+    } else if (_state == STATE_SELECT_CITY) {
+        drawCityList();
     }
 }
 
@@ -65,9 +67,13 @@ void SettingsPage::drawScanList() {
     }
     
     // Rescan Button
-    _tft->fillRect(100, 210, 120, 25, TFT_DARKGREEN);
+    _tft->fillRect(20, 210, 120, 25, TFT_DARKGREEN);
     _tft->setTextColor(TFT_WHITE);
-    _tft->drawCentreString("Rescan", 160, 215, 2);
+    _tft->drawCentreString("Rescan", 80, 215, 2);
+
+    // Weather City Button
+    _tft->fillRect(180, 210, 120, 25, TFT_BLUE);
+    _tft->drawCentreString("Set City", 240, 215, 2);
 }
 
 void SettingsPage::initKeyboard() {
@@ -164,56 +170,193 @@ void SettingsPage::connectWiFi() {
 }
 
 void SettingsPage::handleTouch() {
-    if (touch.touched()) {
-        TS_Point p = touch.getPoint();
-        
-        // Calibration (Same as main.cpp, should be unified)
-        int tx = map(p.x, 350, 3750, 320, 0); 
-        int ty = map(p.y, 250, 3850, 240, 0); 
-        tx = constrain(tx, 0, 319); 
-        ty = constrain(ty, 0, 239);
-        
-        if (_state == STATE_SCAN) {
-             // Check list items
-             for (int i = 0; i < _ssids.size(); i++) {
-                 int y = 40 + i * 35;
-                 if (tx > 10 && tx < 310 && ty > y && ty < y + 30) {
-                     _selectedNetworkIndex = i;
-                     _password = "";
-                     _state = STATE_INPUT_PASS;
-                     draw();
-                     delay(300);
-                     return;
-                 }
-             }
-             // Check Rescan Buttom (Simplified hit check)
-             if (ty > 210 && ty < 235 && tx > 100 && tx < 220) {
-                 scanNetworks();
-             }
-             
-        } else if (_state == STATE_INPUT_PASS) {
-            for (auto &k : _keys) {
-                if (tx >= k.x && tx <= k.x + k.w && ty >= k.y && ty <= k.y + k.h) {
-                    if (k.value == 8) { // Backspace
-                        if (_password.length() > 0) _password.remove(_password.length()-1);
-                    } else if (k.value == 13) { // Enter
-                        connectWiFi();
-                        return; 
-                    } else if (k.value == 27) { // Cancel
-                        _state = STATE_SCAN;
-                        draw();
-                        return;
-                    } else {
-                        _password += k.value;
-                    }
-                    // Redraw Input Box only to avoid flicker? 
-                    // No, simple enough to full redraw or just box.
-                    // Full redraw for simplicity
-                    drawKeyboard();
-                    delay(200); // Debounce
+    if (!touch.touched()) return;
+
+    TS_Point p = touch.getPoint();
+    int tx = map(p.x, 3550, 350, 0, 320); 
+    int ty = map(p.y, 3750, 350, 0, 240); 
+    tx = constrain(tx, 0, 319); 
+    ty = constrain(ty, 0, 239);
+
+    if (_state == STATE_SCAN) {
+        // WiFi List Check
+        for (int i = 0; i < _ssids.size(); i++) {
+            int y = 40 + i * 35;
+            if (tx > 10 && tx < 310 && ty > y && ty < y + 30) {
+                _selectedNetworkIndex = i;
+                _password = "";
+                _state = STATE_INPUT_PASS;
+                draw();
+                delay(400);
+                return;
+            }
+        }
+        // Rescan Button
+        if (ty > 210 && ty < 240 && tx > 20 && tx < 140) {
+            scanNetworks();
+            delay(400);
+        }
+        // Set City Button
+        if (ty > 210 && ty < 240 && tx > 180 && tx < 300) {
+            _state = STATE_SELECT_CITY;
+            draw();
+            delay(400);
+        }
+    } 
+    else if (_state == STATE_INPUT_PASS) {
+        for (auto &k : _keys) {
+            if (tx >= k.x && tx <= k.x + k.w && ty >= k.y && ty <= k.y + k.h) {
+                if (k.value == 8) { // Backspace
+                    if (_password.length() > 0) _password.remove(_password.length()-1);
+                } else if (k.value == 13) { // Enter
+                    connectWiFi();
+                    return; 
+                } else if (k.value == 27) { // Cancel
+                    _state = STATE_SCAN;
+                    draw();
                     return;
+                } else {
+                    _password += k.value;
                 }
+                drawKeyboard();
+                delay(250); 
+                return;
+            }
+        }
+    } 
+    else if (_state == STATE_SELECT_CITY) {
+        // 在點擊處畫紅點偵錯
+        _tft->fillCircle(tx, ty, 3, TFT_RED);
+        
+        // 輸出原始數據與映射數據
+        Serial.printf("TOUCH RAW [%d,%d] -> MAP [%d,%d]\n", p.x, p.y, tx, ty);
+        
+        // 偵錯顯示：座標數值
+        char buf[32];
+        sprintf(buf, "X:%d Y:%d", tx, ty);
+        _tft->fillRect(0, 25, 100, 15, TFT_BLACK);
+        _tft->setTextColor(TFT_YELLOW, TFT_BLACK);
+        _tft->drawString(buf, 10, 28, 1);
+
+        struct CityItem { String name; float lat; float lon; };
+        CityItem cities[] = {
+            {"Taipei", 25.03, 121.56},
+            {"Hsinchu", 24.81, 120.97},
+            {"Taichung", 24.14, 120.67},
+            {"Tainan", 22.99, 120.21},
+            {"Kaohsiung", 22.62, 120.31},
+            {"Hualien", 23.97, 121.60}
+        };
+
+        // 重新計算判定：i 從 0 到 5，y 從 35 開始，每項 29 像素以縮短間距
+        for (int i = 0; i < 6; i++) {
+            int yStart = 35 + i * 29;
+            if (tx > 5 && tx < 315 && ty > yStart && ty < yStart + 27) {
+                saveCity(cities[i].name, cities[i].lat, cities[i].lon);
+                while(touch.touched()); // 等放開
+                draw(); // 刷新綠框
+                return;
+            }
+        }
+        
+        // Buttons
+        if (ty > 210 && ty < 240) {
+            if (tx > 180) { // Back
+                while(touch.touched());
+                _state = STATE_SCAN;
+                draw();
+            } else if (tx < 140) { // Auto
+                while(touch.touched());
+                autoLocate();
             }
         }
     }
+}
+
+void SettingsPage::autoLocate() {
+    if (WiFi.status() == WL_CONNECTED) {
+        _tft->fillScreen(TFT_BLACK);
+        _tft->setTextColor(TFT_WHITE);
+        _tft->drawCentreString("Locating via IP...", 160, 120, 2);
+        
+        HTTPClient http;
+        http.begin("http://ip-api.com/json");
+        int httpCode = http.GET();
+        
+        if (httpCode == 200) {
+            JsonDocument doc;
+            deserializeJson(doc, http.getString());
+            
+            String city = doc["city"].as<String>();
+            float lat = doc["lat"];
+            float lon = doc["lon"];
+            
+            saveCity(city, lat, lon);
+            
+            _tft->fillScreen(TFT_GREEN);
+            _tft->setTextColor(TFT_BLACK);
+            _tft->drawCentreString("AUTO SUCCESS!", 160, 100, 2);
+            _tft->drawCentreString(city, 160, 130, 4);
+            delay(2000);
+        } else {
+            _tft->fillScreen(TFT_RED);
+            _tft->drawCentreString("Location Failed", 160, 120, 2);
+            delay(2000);
+        }
+        _state = STATE_SCAN;
+        draw();
+    }
+}
+
+void SettingsPage::drawCityList() {
+    _tft->fillScreen(TFT_BLACK);
+    _tft->setTextColor(TFT_CYAN, TFT_BLACK);
+    _tft->drawCentreString("WEATHER LOCATION", 160, 5, 2);
+    _tft->drawFastHLine(0, 25, 320, TFT_BLUE);
+
+    Preferences cityPrefs;
+    cityPrefs.begin("weather_v3", true);
+    String cur = cityPrefs.getString("city", "Taipei");
+    cityPrefs.end();
+
+    String names[] = {"Taipei", "Hsinchu", "Taichung", "Tainan", "Kaohsiung", "Hualien"};
+    for (int i = 0; i < 6; i++) {
+        int y = 35 + i * 29;
+        bool active = (names[i] == cur);
+        
+        if (active) {
+            _tft->drawRect(10, y, 300, 27, TFT_GREEN);
+            _tft->setTextColor(TFT_GREEN, TFT_BLACK);
+        } else {
+            _tft->drawRect(10, y, 300, 27, TFT_DARKGREY);
+            _tft->setTextColor(TFT_WHITE, TFT_BLACK);
+        }
+        _tft->drawCentreString(names[i], 160, y + 6, 2);
+    }
+
+    // Bottom Buttons
+    _tft->fillRect(20, 212, 120, 24, TFT_BLUE);
+    _tft->setTextColor(TFT_WHITE);
+    _tft->drawCentreString("AUTO GPS", 80, 216, 2);
+
+    _tft->fillRect(180, 212, 120, 24, TFT_DARKGREY);
+    _tft->drawCentreString("BACK", 240, 216, 2);
+}
+
+void SettingsPage::saveCity(String name, float lat, float lon) {
+    _tft->fillScreen(TFT_BLACK);
+    _tft->setTextColor(TFT_GREEN);
+    _tft->drawCentreString("CONFIRMED & SAVED", 160, 100, 2);
+    _tft->setTextColor(TFT_WHITE);
+    _tft->drawCentreString(name, 160, 130, 4);
+
+    Preferences cityPrefs;
+    cityPrefs.begin("weather_v3", false); 
+    cityPrefs.putFloat("lat", lat);
+    cityPrefs.putFloat("lon", lon);
+    cityPrefs.putString("city", name);
+    cityPrefs.end();
+    
+    Serial.printf("CITY SAVED: %s (%.2f, %.2f)\n", name.c_str(), lat, lon);
+    delay(1500); 
 }

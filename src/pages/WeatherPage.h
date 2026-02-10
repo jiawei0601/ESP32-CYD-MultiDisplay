@@ -21,6 +21,7 @@ private:
     String _weatherDesc;
     float _temp;
     int _humidity;
+    String _lastSavedCity = ""; 
     
     void updateWeather();
 };
