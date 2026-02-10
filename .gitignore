@@ -1,0 +1,6 @@
+.pio
+.vscode
+.gemini
+node_modules
+*.bak
+*.tmp

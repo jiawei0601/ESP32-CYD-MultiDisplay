@@ -105,6 +105,24 @@ void setup() {
 }
 
 void loop() {
+    static unsigned long lastWiFiCheck = 0;
+    if (millis() - lastWiFiCheck > 10000) { // 每 10 秒檢查一次
+        lastWiFiCheck = millis();
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("WiFi lost, reconnecting...");
+            // 嘗試從 Preferences 取得帳密
+            Preferences prefs;
+            prefs.begin("wifi-config", true);
+            String savedSSID = prefs.getString("ssid", "");
+            String savedPass = prefs.getString("pass", "");
+            prefs.end();
+            
+            if (savedSSID.length() > 0) {
+                WiFi.begin(savedSSID.c_str(), savedPass.c_str());
+            }
+        }
+    }
+
     if (touch.touched()) {
         TS_Point p = touch.getPoint();
         
@@ -114,10 +132,7 @@ void loop() {
         tx = constrain(tx, 0, 319); 
         ty = constrain(ty, 0, 239);
 
-        // 視覺回饋：註解掉以防畫面堆積紅點
-        // tft.fillCircle(tx, ty, 3, TFT_RED);
-
-        if (ty < 60) { // 稍微放寬頂部判定範圍
+        if (ty < 30) { // 縮減頂部判定範圍，避免誤觸切換
              int newPage = tx / (320 / PAGE_COUNT);
              if (newPage != currentPage && newPage < PAGE_COUNT) {
                  switchPage(newPage);

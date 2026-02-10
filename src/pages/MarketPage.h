@@ -27,6 +27,7 @@ private:
     const unsigned long _interval = 10000; // 10s 更新一次
 
     MarketAsset _assets[4]; 
+    String _lastError = "None";
     
     void updateMarket();
     void drawCell(int idx, int x, int y, int w, int h);

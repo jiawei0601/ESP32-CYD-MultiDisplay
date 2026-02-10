@@ -15,11 +15,34 @@ void SettingsPage::setup(TFT_eSPI* tft) {
 }
 
 void SettingsPage::loop() {
+    if (_state == STATE_SCAN && _ssids.empty()) {
+        scanNetworks();
+    }
     handleTouch();
 }
 
+void SettingsPage::scanNetworks() {
+    _state = STATE_SCAN;
+    // 只清除內容區，保留導航欄
+    _tft->fillRect(0, 25, 320, 215, TFT_BLACK);
+    _tft->setTextColor(TFT_WHITE, TFT_BLACK);
+    _tft->drawCentreString("Scanning WiFi...", 160, 100, 4);
+    
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    _networkCount = WiFi.scanNetworks();
+    
+    _ssids.clear();
+    for (int i = 0; i < _networkCount && i < 6; ++i) {
+        _ssids.push_back(WiFi.SSID(i));
+    }
+    draw();
+}
+
 void SettingsPage::draw() {
-    _tft->fillScreen(TFT_BLACK);
+    // 只清除 25 像素以下的內容，保留頂部切換欄
+    _tft->fillRect(0, 25, 320, 215, TFT_BLACK);
+    _tft->drawFastHLine(0, 25, 320, TFT_BLUE);
     
     if (_state == STATE_SCAN) {
         drawScanList();
@@ -35,45 +58,23 @@ void SettingsPage::draw() {
     }
 }
 
-void SettingsPage::scanNetworks() {
-    _state = STATE_SCAN;
-    _tft->fillScreen(TFT_BLACK);
-    _tft->setTextColor(TFT_WHITE, TFT_BLACK);
-    _tft->drawCentreString("Scanning WiFi...", 160, 120, 4);
-    
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-    _networkCount = WiFi.scanNetworks();
-    
-    _ssids.clear();
-    for (int i = 0; i < _networkCount && i < 6; ++i) { // Limit to 6
-        _ssids.push_back(WiFi.SSID(i));
-    }
-    draw();
-}
-
 void SettingsPage::drawScanList() {
     _tft->setTextColor(TFT_WHITE, TFT_BLACK);
-    _tft->drawCentreString("Select WiFi Network", 160, 10, 2);
-    _tft->drawFastHLine(0, 30, 320, TFT_BLUE);
+    _tft->drawCentreString("Select WiFi Network", 160, 32, 2);
 
     for (int i = 0; i < _ssids.size(); i++) {
-        int y = 40 + i * 35;
-        _tft->drawRect(10, y, 300, 30, TFT_DARKGREY);
+        int y = 55 + (i * 30); // 列表起始位置下移，間距縮短
+        _tft->drawRect(10, y, 300, 26, TFT_DARKGREY);
         _tft->drawString(_ssids[i], 20, y + 5, 2);
-        
-        // Signal strength bar (mock or real if we saved RSSI)
-        // _tft->drawString(String(WiFi.RSSI(i)), 280, y+5, 2);
     }
     
-    // Rescan Button
-    _tft->fillRect(20, 210, 120, 25, TFT_DARKGREEN);
+    // 按鈕下移至底部
+    _tft->fillRect(20, 212, 120, 24, TFT_DARKGREEN);
     _tft->setTextColor(TFT_WHITE);
-    _tft->drawCentreString("Rescan", 80, 215, 2);
+    _tft->drawCentreString("Rescan", 80, 216, 2);
 
-    // Weather City Button
-    _tft->fillRect(180, 210, 120, 25, TFT_BLUE);
-    _tft->drawCentreString("Set City", 240, 215, 2);
+    _tft->fillRect(180, 212, 120, 24, TFT_BLUE);
+    _tft->drawCentreString("Set City", 240, 216, 2);
 }
 
 void SettingsPage::initKeyboard() {
@@ -179,10 +180,10 @@ void SettingsPage::handleTouch() {
     ty = constrain(ty, 0, 239);
 
     if (_state == STATE_SCAN) {
-        // WiFi List Check
+        // WiFi 列表判定下移
         for (int i = 0; i < _ssids.size(); i++) {
-            int y = 40 + i * 35;
-            if (tx > 10 && tx < 310 && ty > y && ty < y + 30) {
+            int y = 55 + (i * 30);
+            if (tx > 10 && tx < 310 && ty > y && ty < y + 26) {
                 _selectedNetworkIndex = i;
                 _password = "";
                 _state = STATE_INPUT_PASS;
@@ -192,12 +193,12 @@ void SettingsPage::handleTouch() {
             }
         }
         // Rescan Button
-        if (ty > 210 && ty < 240 && tx > 20 && tx < 140) {
+        if (ty > 210 && tx > 20 && tx < 140) {
             scanNetworks();
             delay(400);
         }
         // Set City Button
-        if (ty > 210 && ty < 240 && tx > 180 && tx < 300) {
+        if (ty > 210 && tx > 180 && tx < 300) {
             _state = STATE_SELECT_CITY;
             draw();
             delay(400);
@@ -248,10 +249,10 @@ void SettingsPage::handleTouch() {
             {"Hualien", 23.97, 121.60}
         };
 
-        // 重新計算判定：i 從 0 到 5，y 從 35 開始，每項 29 像素以縮短間距
+        // 城市列表座標判定調整：下移至 55
         for (int i = 0; i < 6; i++) {
-            int yStart = 35 + i * 29;
-            if (tx > 5 && tx < 315 && ty > yStart && ty < yStart + 27) {
+            int yStart = 55 + i * 26;
+            if (tx > 5 && tx < 315 && ty > yStart && ty < yStart + 24) {
                 saveCity(cities[i].name, cities[i].lat, cities[i].lon);
                 while(touch.touched()); // 等放開
                 draw(); // 刷新綠框
@@ -309,10 +310,8 @@ void SettingsPage::autoLocate() {
 }
 
 void SettingsPage::drawCityList() {
-    _tft->fillScreen(TFT_BLACK);
     _tft->setTextColor(TFT_CYAN, TFT_BLACK);
-    _tft->drawCentreString("WEATHER LOCATION", 160, 5, 2);
-    _tft->drawFastHLine(0, 25, 320, TFT_BLUE);
+    _tft->drawCentreString("WEATHER LOCATION", 160, 32, 2);
 
     Preferences cityPrefs;
     cityPrefs.begin("weather_v3", true);
@@ -321,17 +320,17 @@ void SettingsPage::drawCityList() {
 
     String names[] = {"Taipei", "Hsinchu", "Taichung", "Tainan", "Kaohsiung", "Hualien"};
     for (int i = 0; i < 6; i++) {
-        int y = 35 + i * 29;
+        int y = 55 + i * 26;
         bool active = (names[i] == cur);
         
         if (active) {
-            _tft->drawRect(10, y, 300, 27, TFT_GREEN);
+            _tft->drawRect(10, y, 300, 24, TFT_GREEN);
             _tft->setTextColor(TFT_GREEN, TFT_BLACK);
         } else {
-            _tft->drawRect(10, y, 300, 27, TFT_DARKGREY);
+            _tft->drawRect(10, y, 300, 24, TFT_DARKGREY);
             _tft->setTextColor(TFT_WHITE, TFT_BLACK);
         }
-        _tft->drawCentreString(names[i], 160, y + 6, 2);
+        _tft->drawCentreString(names[i], 160, y + 4, 2);
     }
 
     // Bottom Buttons
